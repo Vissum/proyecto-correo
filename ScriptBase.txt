@@ -1,0 +1,127 @@
+-- =====================================================================
+-- Script de base de datos: db_proyecto_email
+-- Proyecto de Correo - Programacion II
+-- PostgreSQL 18
+--
+-- ADVERTENCIA: este script BORRA las tablas existentes antes de crearlas.
+-- Ejecutarlo sobre una base con datos elimina esos datos.
+--
+-- Uso (desde la carpeta donde esta este archivo):
+--   psql -U postgres -d db_proyecto_email -f db_proyecto_email.sql
+-- =====================================================================
+
+DROP TABLE IF EXISTS enrutamiento_buzones CASCADE;
+DROP TABLE IF EXISTS adjuntos CASCADE;
+DROP TABLE IF EXISTS mensajes CASCADE;
+DROP TABLE IF EXISTS carpetas CASCADE;
+DROP TABLE IF EXISTS tokens_recuperacion CASCADE;
+DROP TABLE IF EXISTS usuarios CASCADE;
+
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ---------------------------------------------------------------
+-- Usuarios
+-- ---------------------------------------------------------------
+CREATE TABLE usuarios (
+    id                       UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    correo                   VARCHAR(255) UNIQUE NOT NULL,
+    contrasena_hash          VARCHAR(255) NOT NULL,
+    nombre_completo          VARCHAR(150) NOT NULL,
+    estado                   VARCHAR(20) DEFAULT 'activo'
+                             CHECK (estado IN ('activo', 'suspendido', 'eliminado')),
+    cuota_almacenamiento_mb  INT DEFAULT 1024 CHECK (cuota_almacenamiento_mb > 0),
+    es_administrador         BOOLEAN NOT NULL DEFAULT false,
+    fecha_creacion           TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ---------------------------------------------------------------
+-- Carpetas de cada usuario
+-- ---------------------------------------------------------------
+CREATE TABLE carpetas (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    usuario_id      UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    nombre          VARCHAR(50) NOT NULL,
+    es_sistema      BOOLEAN DEFAULT false,
+    fecha_creacion  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (usuario_id, nombre),
+    UNIQUE (id, usuario_id)
+);
+
+CREATE INDEX idx_carpetas_usuario ON carpetas(usuario_id);
+
+-- ---------------------------------------------------------------
+-- Mensajes (contenido del correo)
+-- ---------------------------------------------------------------
+CREATE TABLE mensajes (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    remitente_id    UUID NOT NULL REFERENCES usuarios(id) ON DELETE RESTRICT,
+    asunto          VARCHAR(255) NOT NULL DEFAULT '',
+    cuerpo_plano    TEXT,
+    cuerpo_html     TEXT,
+    pais_origen     VARCHAR(100) NOT NULL,
+    ip_origen       INET,
+    fecha_envio     TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    borrador_para   TEXT,
+    borrador_cc     TEXT,
+    borrador_cco    TEXT,
+    CHECK (cuerpo_plano IS NOT NULL OR cuerpo_html IS NOT NULL),
+    busqueda TSVECTOR GENERATED ALWAYS AS (
+        to_tsvector('spanish', coalesce(asunto, '') || ' ' || coalesce(cuerpo_plano, ''))
+    ) STORED
+);
+
+CREATE INDEX idx_mensajes_remitente ON mensajes(remitente_id);
+CREATE INDEX idx_mensajes_busqueda ON mensajes USING GIN (busqueda);
+
+-- ---------------------------------------------------------------
+-- Adjuntos (los archivos fisicos se guardan en disco; aqui la ruta)
+-- ---------------------------------------------------------------
+CREATE TABLE adjuntos (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    mensaje_id      UUID NOT NULL REFERENCES mensajes(id) ON DELETE CASCADE,
+    nombre_archivo  VARCHAR(255) NOT NULL,
+    tipo_mime       VARCHAR(100) NOT NULL,
+    tamano_bytes    BIGINT NOT NULL CHECK (tamano_bytes > 0),
+    ruta_servidor   VARCHAR(500) NOT NULL,
+    fecha_subida    TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_adjuntos_mensaje ON adjuntos(mensaje_id);
+
+-- ---------------------------------------------------------------
+-- Enrutamiento: en que buzon de cada usuario aparece cada mensaje
+-- ---------------------------------------------------------------
+CREATE TABLE enrutamiento_buzones (
+    id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    mensaje_id       UUID NOT NULL REFERENCES mensajes(id) ON DELETE CASCADE,
+    destinatario_id  UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    carpeta_id       UUID NOT NULL,
+    tipo_envio       VARCHAR(20) NOT NULL
+                     CHECK (tipo_envio IN ('para', 'cc', 'cco', 'remitente', 'enviado', 'borrador',
+                                           'PARA', 'CC', 'CCO', 'ENVIADO', 'BORRADOR')),
+    leido            BOOLEAN DEFAULT false,
+    destacado        BOOLEAN DEFAULT false,
+    fecha_recepcion  TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (mensaje_id, destinatario_id),
+    FOREIGN KEY (carpeta_id, destinatario_id)
+        REFERENCES carpetas(id, usuario_id) ON DELETE CASCADE
+);
+
+CREATE INDEX idx_enrutamiento_busqueda ON enrutamiento_buzones(destinatario_id, carpeta_id, leido);
+CREATE INDEX idx_enrutamiento_mensaje ON enrutamiento_buzones(mensaje_id);
+
+-- ---------------------------------------------------------------
+-- Tokens para recuperar contrasena
+-- ---------------------------------------------------------------
+CREATE TABLE tokens_recuperacion (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    usuario_id      UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    token_hash      VARCHAR(64) NOT NULL UNIQUE,
+    expira_en       TIMESTAMPTZ NOT NULL,
+    usado           BOOLEAN NOT NULL DEFAULT false,
+    fecha_creacion  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_tokens_recuperacion_usuario ON tokens_recuperacion(usuario_id);
+
+-- Fin del script
