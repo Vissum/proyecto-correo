@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: db_proyecto_email
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./database/db_proyecto_email.sql:/docker-entrypoint-initdb.d/01-base.sql
+      - datos_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d db_proyecto_email"]
+      interval: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8026:8025"
+
+  backend:
+    build: ./backend-correo
+    environment:
+      ADJUNTOS_DIR: /data/adjuntos
+    volumes:
+      - ./data/adjuntos:/data/adjuntos
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  frontend:
+    build: ./frontend-correo
+    environment:
+      BACKEND_URL: http://backend:8080/backend-correo-1.0-SNAPSHOT
+    ports:
+      - "8090:8080"
+    depends_on:
+      - backend
+
+volumes:
+  datos_db:

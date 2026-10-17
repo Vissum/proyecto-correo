@@ -1,0 +1,4 @@
+create-jdbc-connection-pool --datasourceclassname org.postgresql.ds.PGConnectionPoolDataSource --restype javax.sql.ConnectionPoolDataSource --property portNumber=5432:serverName=db:databaseName=db_proyecto_email:user=postgres:password=vmm1003 CorreoPool
+create-jdbc-resource --connectionpoolid CorreoPool jdbc/CorreoDB
+create-javamail-resource --mailhost mailpit --mailuser noreply@correo.local --fromaddress noreply@correo.local --property mail.smtp.port=1025:mail.smtp.auth=false:mail.smtp.starttls.enable=false mail/CorreoMail
+deploy /opt/payara/wars/backend-correo-1.0-SNAPSHOT.war

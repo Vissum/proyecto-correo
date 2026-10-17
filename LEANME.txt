@@ -1,0 +1,21 @@
+PROYECTO CORREO - INSTRUCCIONES
+
+REQUISITOS
+- Docker Desktop instalado y abierto (debe decir "Engine running").
+- Conexion a internet la primera vez (descarga imagenes y dependencias).
+- Puertos 8090 y 8026 libres.
+
+PARA INICIAR
+1. Doble clic en IniciarCorreo.bat.
+2. La primera vez tarda varios minutos. Al terminar se abre la aplicacion.
+3. Si no abre, entra manualmente a:
+   http://localhost:8090/frontend-correo-1.0-SNAPSHOT/
+
+PARA DETENER
+- Doble clic en DetenerCorreo.bat.
+
+CORREOS DE PRUEBA (Mailpit)
+- Interfaz: http://localhost:8026
+
+NOTA
+- Los datos se conservan al detener el proyecto.

@@ -1,0 +1,8 @@
+.env
+target/
+backend-correo/target/
+frontend-correo/target/
+data/adjuntos/
+nbproject/private/
+build/
+*.log
